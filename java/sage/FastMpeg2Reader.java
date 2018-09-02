@@ -238,7 +238,7 @@ public final class FastMpeg2Reader
 
     parseLevel = PARSE_LEVEL_PES;
 
-    transferIncrement = Sage.getInt("miniplayer/push_buffer_transfer_increment", (Sage.EMBEDDED || !Sage.WINDOWS_OS) ? 0 : 32768);
+    transferIncrement = Sage.getInt("miniplayer/push_buffer_transfer_increment", (!Sage.WINDOWS_OS) ? 0 : 32768);
   }
 
   public void setIFrameAlign(boolean x)
@@ -996,7 +996,7 @@ public final class FastMpeg2Reader
             if (ts)
             {
               int i = 0;
-              if (tsPacketSize == 192 || Sage.EMBEDDED)
+              if (tsPacketSize == 192)
               {
                 // Do the alignment this way since it should always be exact
                 long bytesRead = bitsDone / 8;
@@ -1655,6 +1655,15 @@ public final class FastMpeg2Reader
     //bytesReadForThisSkip = 0;
     msecStartForSkip = lastRawIFramePTS = lastRawVideoPTS = 0;
     lastFullParseBytePos = -(DIST_BETWEEN_FULL_PARSES + 1);
+  }
+  
+  public void seekToPosition(long pos) throws IOException {
+    if (pos <= 0) {
+      seekToBeginning();
+    } else {
+      ins.position(pos);
+      bitsDone = pos*8;
+    }
   }
 
   public void seek(long seekTime) throws IOException

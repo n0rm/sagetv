@@ -39,6 +39,9 @@ public class CaptureDeviceInput
   public static final String TUNING_PLUGIN_PORT = "tuning_plugin_port";
   private static final String SFIR_DEV_NAME = "sfir_dev_name";
   private static final String IR_XMT_PORT = "ir_xmt_port";
+  public static final int HDMI_LINEIN_CROSSBAR_INDEX = 80;
+  public static final int HDMI_AES_CROSSBAR_INDEX = 81; // HDMI Video & Audio
+  public static final int HDMI_SPDIF_CROSSBAR_INDEX = 82;
   public static final int YPBPR_SPDIF_CROSSBAR_INDEX = 90;
   public static final int FM_RADIO_CROSSBAR_INDEX = 99;
   public static final int DIGITAL_TUNER_CROSSBAR_INDEX = 100;
@@ -61,7 +64,7 @@ public class CaptureDeviceInput
     else if (x == 6)
       return "HDMI"; // DShow says 'SerialDigital', but I've only ever seen this with the Hauppauge HD PVR PCIe card and on that it's HDMI
     else if (x == 7)
-      return "ParallelDigital";
+      return Sage.rez("Digital"); // Dshow 'PhysConn_Video_ParallelDigital'
     else if (x == 8)
       return "SCSI";
     else if (x == 9)
@@ -84,6 +87,12 @@ public class CaptureDeviceInput
       return Sage.rez("Digital_TV_Tuner");
     else if (x == YPBPR_SPDIF_CROSSBAR_INDEX)
       return Sage.rez("Component") + "+SPDIF";
+    else if (x == HDMI_LINEIN_CROSSBAR_INDEX)
+      return Sage.rez("HDMI") + "+LineIn";
+    else if (x == HDMI_AES_CROSSBAR_INDEX)
+      return Sage.rez("HDMI") + "_AV";
+    else if (x == HDMI_SPDIF_CROSSBAR_INDEX)
+      return Sage.rez("HDMI") + "+SPDIF";
     else
       return Sage.rez("Unknown");
   }
@@ -314,20 +323,6 @@ public class CaptureDeviceInput
       oldInput.providerID = 0;
       oldInput.writePrefs();
       NetworkClient.distributeRecursivePropertyChange(oldInput.prefs);
-      if (SageConstants.LITE)
-      {
-        // Find any other devices configured and unconfigure them
-        CaptureDeviceInput[] theInputs = MMC.getInstance().getConfiguredInputs();
-        for (int i = 0; i < theInputs.length; i++)
-        {
-          if (theInputs[i].capDev != capDev)
-          {
-            theInputs[i].providerID = 0;
-            theInputs[i].writePrefs();
-            NetworkClient.distributeRecursivePropertyChange(theInputs[i].prefs);
-          }
-        }
-      }
     }
     providerID = inProvID;
     writePrefs();
@@ -542,7 +537,7 @@ public class CaptureDeviceInput
       sage.media.format.ContainerFormat cf;
       // We don't know what it is in this case aside from container, so it'll get set through a message callback
       cf = new sage.media.format.ContainerFormat();
-      if (Sage.getBoolean(prefs + "encode_digital_tv_as_program_stream", !Sage.EMBEDDED))
+      if (Sage.getBoolean(prefs + "encode_digital_tv_as_program_stream", true))
         cf.setFormatName(sage.media.format.MediaFormat.MPEG2_PS);
       else
         cf.setFormatName(sage.media.format.MediaFormat.MPEG2_TS);

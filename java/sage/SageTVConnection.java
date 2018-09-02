@@ -15,8 +15,6 @@
  */
 package sage;
 
-import sage.plugin.PluginEventManager;
-
 import java.util.Map.Entry;
 import java.util.Set;
 
@@ -187,213 +185,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     underlyingOutStream = new java.io.BufferedOutputStream(mySock.getOutputStream());
     underlyingInStream = new java.io.BufferedInputStream(mySock.getInputStream());
     outStream = new MyDataOutput(underlyingOutStream);
-    inStream = new java.io.DataInput()
-    {
-      public final int read(byte b[]) throws java.io.IOException
-      { return underlyingInStream.read(b, 0, b.length); }
-
-      public final int read(byte b[], int off, int len) throws java.io.IOException
-      { return underlyingInStream.read(b, off, len); }
-
-      public final void readFully(byte b[]) throws java.io.IOException
-      { readFully(b, 0, b.length); }
-
-      public final void readFully(byte b[], int off, int len) throws java.io.IOException
-      {
-        if (len < 0)
-          throw new IndexOutOfBoundsException();
-        int n = 0;
-        while (n < len) {
-          int count = underlyingInStream.read(b, off + n, len - n);
-          if (count < 0)
-            throw new java.io.EOFException();
-          n += count;
-        }
-      }
-
-      public final int skipBytes(int n) throws java.io.IOException {
-        int total = 0;
-        int cur = 0;
-
-        while ((total<n) && ((cur = (int) underlyingInStream.skip(n-total)) > 0)) {
-          total += cur;
-        }
-
-        return total;
-      }
-
-      public final boolean readBoolean() throws java.io.IOException {
-        int ch = underlyingInStream.read();
-        if (ch < 0)
-          throw new java.io.EOFException();
-        return (ch != 0);
-      }
-
-      public final byte readByte() throws java.io.IOException {
-        int ch = underlyingInStream.read();
-        if (ch < 0)
-          throw new java.io.EOFException();
-        return (byte)(ch);
-      }
-
-      public final int readUnsignedByte() throws java.io.IOException {
-        int ch = underlyingInStream.read();
-        if (ch < 0)
-          throw new java.io.EOFException();
-        return ch;
-      }
-
-      public final short readShort() throws java.io.IOException {
-        int ch1 = underlyingInStream.read();
-        int ch2 = underlyingInStream.read();
-        if ((ch1 | ch2) < 0)
-          throw new java.io.EOFException();
-        return (short)((ch1 << 8) + (ch2 << 0));
-      }
-
-      public final int readUnsignedShort() throws java.io.IOException {
-        int ch1 = underlyingInStream.read();
-        int ch2 = underlyingInStream.read();
-        if ((ch1 | ch2) < 0)
-          throw new java.io.EOFException();
-        return (ch1 << 8) + (ch2 << 0);
-      }
-
-      public final char readChar() throws java.io.IOException {
-        int ch1 = underlyingInStream.read();
-        int ch2 = underlyingInStream.read();
-        if ((ch1 | ch2) < 0)
-          throw new java.io.EOFException();
-        return (char)((ch1 << 8) + (ch2 << 0));
-      }
-
-      byte[] myReadBuff = new byte[8];
-      public final int readInt() throws java.io.IOException {
-        readFully(myReadBuff, 0, 4);
-        int ch1 = myReadBuff[0] & 0xFF;
-        int ch2 = myReadBuff[1] & 0xFF;
-        int ch3 = myReadBuff[2] & 0xFF;
-        int ch4 = myReadBuff[3] & 0xFF;
-        if ((ch1 | ch2 | ch3 | ch4) < 0)
-          throw new java.io.EOFException();
-        return ((ch1 << 24) + (ch2 << 16) + (ch3 << 8) + (ch4 << 0));
-      }
-
-      public final long readLong() throws java.io.IOException {
-        readFully(myReadBuff, 0, 8);
-        int ch1 = myReadBuff[0] & 0xFF;
-        int ch2 = myReadBuff[1] & 0xFF;
-        int ch3 = myReadBuff[2] & 0xFF;
-        int ch4 = myReadBuff[3] & 0xFF;
-        if ((ch1 | ch2 | ch3 | ch4) < 0)
-          throw new java.io.EOFException();
-        int i0 = ((ch1 << 24) + (ch2 << 16) + (ch3 << 8) + (ch4 << 0));
-        ch1 = myReadBuff[4] & 0xFF;
-        ch2 = myReadBuff[5] & 0xFF;
-        ch3 = myReadBuff[6] & 0xFF;
-        ch4 = myReadBuff[7] & 0xFF;
-        if ((ch1 | ch2 | ch3 | ch4) < 0)
-          throw new java.io.EOFException();
-        int i1 = ((ch1 << 24) + (ch2 << 16) + (ch3 << 8) + (ch4 << 0));
-        return ((long)i0 << 32) + (i1 & 0xFFFFFFFFL);
-      }
-
-      public final float readFloat() throws java.io.IOException {
-        return Float.intBitsToFloat(readInt());
-      }
-      public final double readDouble() throws java.io.IOException {
-        return Double.longBitsToDouble(readLong());
-      }
-
-      public final String readLine() throws java.io.IOException {
-        throw new UnsupportedOperationException();
-      }
-
-      public final String readUTF() throws java.io.IOException {
-        // Since we're doing writeUTF from DataOutputStream in the writer we have to
-        // be compliant on the reader and use the same charset
-        //				return java.io.DataInputStream.readUTF(this);
-        //				int utflen = readUnsignedShort();
-        //				byte bytearr [] = new byte[utflen];
-        //				readFully(bytearr, 0, utflen);
-        //				return new String(bytearr, Sage.CHARSET);
-        // NOTE: We had to update this to use the same code as in FastRandomFile so that we can deal with UTF
-        // strings larger than 64k. That only occurs in the Wiz.bin file and updating the code in here as
-        // well as FastRandomFile will cover all usages of Wiz.bin data then.
-        int utflen = readUnsignedShort();
-        if (utflen == 0)
-          return "";
-        else if (utflen == 0xFFFF)
-          utflen = readInt();
-        if (bytearr == null || bytearr.length < utflen)
-        {
-          bytearr = new byte[utflen*2];
-          chararr = new char[utflen*2];
-        }
-
-        int c, c2, c3;
-        int incount = 0;
-        int outcount = 0;
-
-        readFully(bytearr, 0, utflen);
-
-        while (incount < utflen) {
-          // Fast path for all 7 bit ASCII chars
-          c = bytearr[incount] & 0xFF;
-          if (c > 127) break;
-          incount++;
-          chararr[outcount++]=(char)c;
-        }
-
-        int x;
-        while (incount < utflen) {
-          c = bytearr[incount] & 0xFF;
-          if (c < 128) {
-            incount++;
-            chararr[outcount++]=(char)c;
-            continue;
-          }
-          // Look at the top four bits only, since only they can affect this
-          x = c >> 4;
-          if (x == 12 || x == 13) {
-            // 110xxxxx 10xxxxxx - 2 bytes for this char
-            incount += 2;
-            if (incount > utflen)
-              throw new java.io.UTFDataFormatException("bad UTF data: missing second byte of 2 byte char at " + incount);
-            c2 = bytearr[incount - 1];
-            // Verify next byte starts with 10xxxxxx
-            if ((c2 & 0xC0) != 0x80)
-              throw new java.io.UTFDataFormatException("bad UTF data: second byte format after 110xxxx is wrong char: 0x" +
-                  Integer.toString((int)c2, 16) + " count: " + incount);
-            chararr[outcount++]=(char)(((c & 0x1F) << 6) | (c2 & 0x3F));
-          }
-          else if (x == 14)
-          {
-            // 1110xxxx 10xxxxxx 10xxxx - 3 bytes for this char
-            incount += 3;
-            if (incount > utflen)
-              throw new java.io.UTFDataFormatException("bad UTF data: missing extra bytes of 3 byte char at " + incount);
-            c2 = bytearr[incount - 2];
-            c3 = bytearr[incount - 1];
-            // Verify next bytes start with 10xxxxxx
-            if (((c2 & 0xC0) != 0x80) || ((c3 & 0xC0) != 0x80))
-              throw new java.io.UTFDataFormatException("bad UTF data: extra byte format after 1110xxx is wrong char2: 0x" +
-                  Integer.toString((int)c2, 16) + " char3: " + Integer.toString((int)c3, 16) + " count: " + incount);
-            chararr[outcount++]=(char)(((c & 0x0F) << 12) | ((c2 & 0x3F) << 6) | (c3 & 0x3F));
-          }
-          else
-          {
-            // No need to support beyond this, as we only have 16 bit chars in Java
-            throw new java.io.UTFDataFormatException("bad UTF data: we don't support more than 16 bit chars char: " +
-                Integer.toString((int)c, 16) + " count:" + incount);
-          }
-        }
-        return new String(chararr, 0, outcount);
-      }
-      // For optimizing UTF reads
-      private byte[] bytearr = null;
-      private char[] chararr = null;
-    };
+    inStream = new MyDataInput(underlyingInStream);
   }
 
   // Throws an exception for invalid login.
@@ -405,9 +197,9 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
       outStream.write("MODE\r\n".getBytes()); // 1 is crypto, 0 is not
       outStream.flush();
       String tempString = readLineBytes(inStream);
-      if (!Sage.EMBEDDED && "1".equals(tempString))
+      if ("1".equals(tempString))
       {
-        byte[] allcryptbits = (byte[])(SageConstants.LITE ? UIManager.a : Sage.q);
+        byte[] allcryptbits = (byte[])(Sage.q);
         byte[] bcryptbits = new byte[CIPHER_KEY_SIZE/8];
         System.arraycopy(allcryptbits, 0, bcryptbits, 0, CIPHER_KEY_SIZE/8);
         byte[] ivbits = new byte[8];
@@ -476,39 +268,9 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
         throw new java.io.IOException("Client has the wrong version:" + mySock.toString());
       }
       // Don't use encrypted C/S connections at all anymore (they apparently got broke somewhere anyhow)
-      if (Sage.EMBEDDED || true)
-      {
-        outStream.write("0\r\n".getBytes(Sage.BYTE_CHARSET));
-        outStream.flush();
-      }
-      else
-      {
-        outStream.write("1\r\n".getBytes(Sage.BYTE_CHARSET));
-        outStream.flush();
-        byte[] allcryptbits = (byte[])(SageConstants.LITE ? UIManager.a : Sage.q);
-        byte[] bcryptbits = new byte[CIPHER_KEY_SIZE/8];
-        System.arraycopy(allcryptbits, 0, bcryptbits, 0, CIPHER_KEY_SIZE/8);
-        byte[] ivbits = new byte[8];
-        System.arraycopy(allcryptbits, CIPHER_KEY_SIZE/8, ivbits, 0, 8);
-        javax.crypto.Cipher encryptCipher, decryptCipher;
-        try
-        {
-          javax.crypto.spec.SecretKeySpec skeySpec = new javax.crypto.spec.SecretKeySpec(bcryptbits, CIPHER_TYPE);
-          encryptCipher = javax.crypto.Cipher.getInstance(CIPHER_TYPE + "/CFB8/NoPadding");
-          encryptCipher.init(javax.crypto.Cipher.ENCRYPT_MODE, skeySpec,
-              new javax.crypto.spec.IvParameterSpec(ivbits));
-          decryptCipher = javax.crypto.Cipher.getInstance(CIPHER_TYPE + "/CFB8/NoPadding");
-          decryptCipher.init(javax.crypto.Cipher.DECRYPT_MODE, skeySpec,
-              new javax.crypto.spec.IvParameterSpec(ivbits));
-        }
-        catch (Exception e)
-        {
-          throw new java.io.IOException("ERROR NETWORKING SYSTEM:" + e);
-        }
-        underlyingOutStream = new javax.crypto.CipherOutputStream(underlyingOutStream, encryptCipher);
-        underlyingInStream = new javax.crypto.CipherInputStream(underlyingInStream, decryptCipher);
+      outStream.write("0\r\n".getBytes(Sage.BYTE_CHARSET));
+      outStream.flush();
 
-      }
       tempString = readLineBytes(inStream);
       if (tempString == null)
       {
@@ -801,7 +563,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
       throw new java.io.IOException("OK response not received, got:" + tempString);
     }
 
-    outStream.write(("WIZARD_SYNC2 " + Integer.toString(Wizard.VERSION & 0xFF) + " " + Boolean.toString(Wizard.COMPACT_DB) + "\r\n").getBytes(Sage.BYTE_CHARSET));
+    outStream.write(("WIZARD_SYNC2 " + Integer.toString(Wizard.VERSION & 0xFF) + "\r\n").getBytes(Sage.BYTE_CHARSET));
     Wizard.getInstance().sendDBThroughStream(mySock, outStream, this);
     outStream.flush();
     tempString = readLineBytes(inStream);
@@ -836,16 +598,15 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
 
   private void recvWizardSync2(String[] myTokes) throws java.io.IOException
   {
-    if (myTokes.length != 3)
+    if (myTokes.length != 2)
     {
-      outStream.write("ERROR need 3 tokens for WIZARD_SYNC2 command\r\n".getBytes(Sage.BYTE_CHARSET));
-      System.out.println("ERROR need 3 tokens for WIZARD_SYNC2 command." +
+      outStream.write("ERROR need 2 tokens for WIZARD_SYNC2 command\r\n".getBytes(Sage.BYTE_CHARSET));
+      System.out.println("ERROR need 2 tokens for WIZARD_SYNC2 command." +
           java.util.Arrays.asList(myTokes));
       return;
     }
 
     Wizard.VERSION = (byte)(Integer.parseInt(myTokes[1]) & 0xFF);
-    Wizard.COMPACT_DB = Boolean.valueOf(myTokes[2]).booleanValue();
     Wizard.getInstance().xctIn(inStream, Wizard.VERSION, TRANSLATE_DB_IDS ? dbIDMap : null);
     outStream.write(OK_BYTES);
   }
@@ -991,7 +752,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
   private Msg recvWatchLive(Msg myMsg) throws java.io.IOException
   {
     int rv;
-    java.io.DataInputStream dis = new java.io.DataInputStream(new java.io.ByteArrayInputStream(myMsg.data));
+    MyDataInput dis = new MyDataInput(new java.io.ByteArrayInputStream(myMsg.data));
     UIClient requestor = new RemoteUI(dis.readUTF());
     int airID = convertToLocalDBID(dis.readInt());
     Airing theAir = Wizard.getInstance().getAiringForID(airID);
@@ -999,7 +760,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     if (theAir != null)
     {
       int[] watchError = new int[1];
-      watchFile = Seeker.getInstance().requestWatch(theAir, watchError, requestor);
+      watchFile = SeekerSelector.getInstance().requestWatch(theAir, watchError, requestor);
       if (watchFile != null)
         rv = 0;
       else
@@ -1016,7 +777,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
   private Msg recvWatchFile(Msg myMsg) throws java.io.IOException
   {
     int rv;
-    java.io.DataInputStream dis = new java.io.DataInputStream(new java.io.ByteArrayInputStream(myMsg.data));
+    MyDataInput dis = new MyDataInput(new java.io.ByteArrayInputStream(myMsg.data));
     UIClient requestor = new RemoteUI(dis.readUTF());
     int fileID = convertToLocalDBID(dis.readInt());
     MediaFile mf = Wizard.getInstance().getFileForID(fileID);
@@ -1024,7 +785,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     if (mf != null)
     {
       int[] watchError = new int[1];
-      watchFile = Seeker.getInstance().requestWatch(mf, watchError, requestor);
+      watchFile = SeekerSelector.getInstance().requestWatch(mf, watchError, requestor);
       if (watchFile != null)
         rv = 0;
       else
@@ -1040,19 +801,19 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
 
   private Msg recvWatchFinish(Msg myMsg) throws java.io.IOException
   {
-    java.io.DataInputStream dis = new java.io.DataInputStream(new java.io.ByteArrayInputStream(myMsg.data));
+    MyDataInput dis = new MyDataInput(new java.io.ByteArrayInputStream(myMsg.data));
     UIClient requestor = new RemoteUI(dis.readUTF());
-    Seeker.getInstance().finishWatch(requestor);
+    SeekerSelector.getInstance().finishWatch(requestor);
     return new Msg(RESPONSE_MSG, myMsg.type, null, myMsg.id);
   }
 
   private Msg recvForceChannelTune(Msg myMsg) throws java.io.IOException
   {
-    java.io.DataInputStream dis = new java.io.DataInputStream(new java.io.ByteArrayInputStream(myMsg.data));
+    MyDataInput dis = new MyDataInput(new java.io.ByteArrayInputStream(myMsg.data));
     UIClient requestor = new RemoteUI(dis.readUTF());
     String chanString = dis.readUTF();
     String mmcInputName = dis.readUTF();
-    int rv = Seeker.getInstance().forceChannelTune(mmcInputName, chanString, requestor);
+    int rv = SeekerSelector.getInstance().forceChannelTune(mmcInputName, chanString, requestor);
     byte[] data = new byte[4];
     writeIntBytes(rv, data, 0);
     return new Msg(RESPONSE_MSG, myMsg.type, data, myMsg.id);
@@ -1082,7 +843,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
   private Msg recvRequestUploadSpace(Msg myMsg) throws java.io.IOException
   {
     byte[] data = new byte[4];
-    java.io.DataInputStream dis = new java.io.DataInputStream(new java.io.ByteArrayInputStream(myMsg.data));
+    MyDataInput dis = new MyDataInput(new java.io.ByteArrayInputStream(myMsg.data));
     long totalFileSize = dis.readLong();
     String filename = dis.readUTF();
     java.io.File destFile = new java.io.File(filename);
@@ -1110,22 +871,22 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
 
     if (totalFileSize > freeSpace)
     {
-      if (!Sage.WINDOWS_OS || Seeker.getInstance().isPathInManagedStorage(destFile))
+      if (!Sage.WINDOWS_OS || SeekerSelector.getInstance().isPathInManagedStorage(destFile))
       {
         // Make a storage request with Seeker to get the space we need, and then see if we've got the space
         // now and then cancel the request.
         if (Sage.DBG) System.out.println("Requesting Seeker to clear up " + ((totalFileSize - freeSpace)/1000000) + "MB worth of space");
-        java.io.File tempFile = Seeker.getInstance().requestDirectoryStorage("scratch", totalFileSize - freeSpace);
-        synchronized (Seeker.getInstance())
+        java.io.File tempFile = SeekerSelector.getInstance().requestDirectoryStorage("scratch", totalFileSize - freeSpace);
+        synchronized (SeekerSelector.getInstance())
         {
-          Seeker.getInstance().kick();
+          SeekerSelector.getInstance().kick();
           try
           {
-            Seeker.getInstance().wait(5000);
+            SeekerSelector.getInstance().wait(5000);
           }catch (InterruptedException e){}
         }
         freeSpace = Sage.getDiskFreeSpace(destFile.getAbsolutePath());
-        Seeker.getInstance().clearDirectoryStorageRequest(tempFile);
+        SeekerSelector.getInstance().clearDirectoryStorageRequest(tempFile);
         if (totalFileSize > freeSpace)
         {
           System.out.println("ERROR Unable to clear up enough free space for library import");
@@ -1151,7 +912,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
 
   private Msg recvRequestMediaServerAccess(Msg myMsg) throws java.io.IOException
   {
-    java.io.DataInputStream dis = new java.io.DataInputStream(new java.io.ByteArrayInputStream(myMsg.data));
+    MyDataInput dis = new MyDataInput(new java.io.ByteArrayInputStream(myMsg.data));
     boolean grant = dis.readBoolean();
     String fname = dis.readUTF();
     java.io.File theFile = new java.io.File(fname);
@@ -1167,7 +928,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
 
   private void recvInactiveFile(Msg myMsg) throws java.io.IOException
   {
-    java.io.DataInputStream dis = new java.io.DataInputStream(new java.io.ByteArrayInputStream(myMsg.data));
+    MyDataInput dis = new MyDataInput(new java.io.ByteArrayInputStream(myMsg.data));
     String inactiveFilename = dis.readUTF();
     VideoFrame.inactiveFileAll(inactiveFilename);
   }
@@ -1175,9 +936,8 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
   private Msg recvGetPrettySchedule(Msg myMsg) throws java.io.IOException
   {
     java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-    java.io.DataOutputStream dos = new java.io.DataOutputStream(baos);
-
-    Object[] schedAirs = Seeker.getInstance().getScheduledAirings();
+    MyDataOutput dos = new MyDataOutput(baos);
+    Object[] schedAirs = SeekerSelector.getInstance().getScheduledAirings();
     dos.writeInt(schedAirs.length);
     for (int i = 0; i < schedAirs.length; i++)
     {
@@ -1193,7 +953,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
 
   private Msg recvGetCurrRecordFiles(Msg myMsg) throws java.io.IOException
   {
-    MediaFile[] mfs = Seeker.getInstance().getCurrRecordFiles();
+    MediaFile[] mfs = SeekerSelector.getInstance().getCurrRecordFiles();
     byte[] data = new byte[4*(mfs.length + 1)];
     int offset = 0;
     writeIntBytes(mfs.length, data, 0);
@@ -1208,9 +968,9 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
 
   private Msg recvGetCurrRecordFileForClient(Msg myMsg) throws java.io.IOException
   {
-    java.io.DataInputStream dis = new java.io.DataInputStream(new java.io.ByteArrayInputStream(myMsg.data));
+    MyDataInput dis = new MyDataInput(new java.io.ByteArrayInputStream(myMsg.data));
     UIClient requestor = new RemoteUI(dis.readUTF());
-    MediaFile mf = Seeker.getInstance().getCurrRecordFileForClient(requestor);
+    MediaFile mf = SeekerSelector.getInstance().getCurrRecordFileForClient(requestor);
     byte[] data = new byte[4];
     writeIntBytes((mf == null) ? 0 : mf.id, data, 0);
     return new Msg(RESPONSE_MSG, myMsg.type, data, myMsg.id);
@@ -1219,30 +979,17 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
   // This is a broadcast message, no response is needed
   private void recvScheduleChanged(Msg myMsg) throws java.io.IOException
   {
-    Scheduler.getInstance().setClientDontKnowFlag(myMsg.data[0] != 0);
+    SchedulerSelector.getInstance().setClientDontKnowFlag(myMsg.data[0] != 0);
     Catbert.distributeHookToLocalUIs("RecordingScheduleChanged", null);
 
     // Not the most efficient way in the world, but much easier than the other options
-    if (!Sage.EMBEDDED)
-    {
-      java.awt.EventQueue.invokeLater(new Runnable()
+    java.awt.EventQueue.invokeLater(new Runnable()
       {
         public void run()
         {
           VideoFrame.kickAll();
         }
       });
-    }
-    else
-    {
-      Pooler.execute(new Runnable()
-      {
-        public void run()
-        {
-          VideoFrame.kickAll();
-        }
-      });
-    }
   }
 
   // This is a broadcast message, no response is needed
@@ -1253,7 +1000,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
 
   private void recvEvent(Msg myMsg) throws java.io.IOException
   {
-    java.io.DataInputStream dis = new java.io.DataInputStream(new java.io.ByteArrayInputStream(myMsg.data));
+    MyDataInput dis = new MyDataInput(new java.io.ByteArrayInputStream(myMsg.data));
     String eventName = dis.readUTF();
     int numArgs = dis.readInt();
     java.util.Map evtArgs = null;
@@ -1273,12 +1020,12 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
   private Msg recvRecord(Msg myMsg) throws java.io.IOException
   {
     int rv;
-    java.io.DataInputStream dis = new java.io.DataInputStream(new java.io.ByteArrayInputStream(myMsg.data));
+    MyDataInput dis = new MyDataInput(new java.io.ByteArrayInputStream(myMsg.data));
     UIClient requestor = new RemoteUI(dis.readUTF());
     int airID = convertToLocalDBID(dis.readInt());
     Airing theAir = Wizard.getInstance().getAiringForID(airID);
     if (theAir != null)
-      rv = Seeker.getInstance().record(theAir, requestor);
+      rv = SeekerSelector.getInstance().record(theAir, requestor);
     else
       rv = VideoFrame.WATCH_FAILED_NULL_AIRING;
     byte[] data = new byte[4];
@@ -1289,13 +1036,13 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
   private Msg recvCancelRecord(Msg myMsg) throws java.io.IOException
   {
     boolean rv;
-    java.io.DataInputStream dis = new java.io.DataInputStream(new java.io.ByteArrayInputStream(myMsg.data));
+    MyDataInput dis = new MyDataInput(new java.io.ByteArrayInputStream(myMsg.data));
     UIClient requestor = new RemoteUI(dis.readUTF());
     int airID = convertToLocalDBID(dis.readInt());
     Airing theAir = Wizard.getInstance().getAiringForID(airID);
     if (theAir != null)
     {
-      Seeker.getInstance().cancelRecord(theAir, requestor);
+      SeekerSelector.getInstance().cancelRecord(theAir, requestor);
       rv = true;
     }
     else
@@ -1307,7 +1054,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
 
   private Msg recvTimedRecord(Msg myMsg) throws java.io.IOException
   {
-    java.io.DataInputStream dis = new java.io.DataInputStream(new java.io.ByteArrayInputStream(myMsg.data));
+    MyDataInput dis = new MyDataInput(new java.io.ByteArrayInputStream(myMsg.data));
     UIClient requestor = new RemoteUI(dis.readUTF());
     int airID = convertToLocalDBID(dis.readInt());
     int recurCode = dis.readInt();
@@ -1319,11 +1066,11 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     int rv;
     if (mr != null)
     {
-      rv = Seeker.getInstance().modifyRecord(startTime-mr.startTime, endTime-mr.getEndTime(), mr, requestor);
+      rv = SeekerSelector.getInstance().modifyRecord(startTime-mr.startTime, endTime-mr.getEndTime(), mr, requestor);
     }
     else
     {
-      rv = Seeker.getInstance().timedRecord(startTime, endTime, stationID, recurCode, air, requestor);
+      rv = SeekerSelector.getInstance().timedRecord(startTime, endTime, stationID, recurCode, air, requestor);
     }
     byte[] data = new byte[4];
     writeIntBytes(rv, data, 0);
@@ -1362,7 +1109,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
 
   private Msg recvAction(Msg myMsg) throws java.io.IOException
   {
-    java.io.DataInputStream dis = new java.io.DataInputStream(new java.io.ByteArrayInputStream(myMsg.data));
+    MyDataInput dis = new MyDataInput(new java.io.ByteArrayInputStream(myMsg.data));
     String methodName = dis.readUTF();
     int numArgs = dis.readInt();
     Object[] args = new Object[numArgs];
@@ -1372,27 +1119,13 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
       //if (Sage.DBG) System.out.println("ReadObjectFromStream=" + args[i]);
     }
     java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-    java.io.DataOutputStream dos = new java.io.DataOutputStream(baos);
+    MyDataOutput dos = new MyDataOutput(baos);
     try
     {
       String uiContext = null;
       if (Sage.client)
       {
-        if (Sage.EMBEDDED)
-        {
-          java.util.Iterator walker = UIManager.getUIIterator();
-          while (walker.hasNext())
-          {
-            UIManager testUI = (UIManager) walker.next();
-            if (!Seeker.LOCAL_PROCESS_CLIENT.equals(testUI.getLocalUIClientName()))
-            {
-              uiContext = testUI.getLocalUIClientName();
-              break;
-            }
-          }
-        }
-        else
-          uiContext = Seeker.LOCAL_PROCESS_CLIENT;
+        uiContext = Seeker.LOCAL_PROCESS_CLIENT;
       }
       // If this is being executed on the client by a server; then we can use our local UI context since that's the only valid one on a client
       Object rv = Catbert.evaluateAction(uiContext, methodName, args);
@@ -1412,7 +1145,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
 
   private Msg recvHook(Msg myMsg) throws java.io.IOException
   {
-    java.io.DataInputStream dis = new java.io.DataInputStream(new java.io.ByteArrayInputStream(myMsg.data));
+    MyDataInput dis = new MyDataInput(new java.io.ByteArrayInputStream(myMsg.data));
     String hookClientName = dis.readUTF();
     String methodName = dis.readUTF();
     int numArgs = dis.readInt();
@@ -1434,14 +1167,13 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
       }
     }
     java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-    java.io.DataOutputStream dos = new java.io.DataOutputStream(baos);
+    MyDataOutput dos = new MyDataOutput(baos);
     writeObjectToStream(rv, dos);
     return new Msg(RESPONSE_MSG, myMsg.type, baos.toByteArray(), myMsg.id);
   }
 
   private void recvClientCapabilities(Msg myMsg) throws java.io.IOException {
-    java.io.DataInputStream dis =
-        new java.io.DataInputStream(new java.io.ByteArrayInputStream(myMsg.data));
+    MyDataInput dis = new MyDataInput(new java.io.ByteArrayInputStream(myMsg.data));
     int numCapabilities = dis.readInt();
     if (Sage.DBG) System.out.println("Recieving " + numCapabilities + " capabilties for client " + clientName);
     NetworkClient.clearClientCapabilities(clientName);
@@ -1751,7 +1483,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
       throw new IllegalArgumentException("INVALID MAJOR TYPE IN OBJECT: " + majorType);
   }
 
-  private void writeObjectToStream(Object obj, java.io.DataOutput dataOut) throws java.io.IOException
+    private void writeObjectToStream(Object obj, java.io.DataOutput dataOut) throws java.io.IOException
   {
     if (obj == null)
     {
@@ -2128,7 +1860,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     try
     {
       java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-      java.io.DataOutputStream dos = new java.io.DataOutputStream(baos);
+      MyDataOutput dos = new MyDataOutput(baos);
       dos.writeUTF(methodName);
       dos.writeInt(args != null ? args.length : 0);
       for (int i = 0; (args != null) && i < args.length; i++)
@@ -2136,7 +1868,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
         writeObjectToStream(args[i], dos);
       }
       Msg response = postMessage(new Msg(REQUEST_MSG, ACTION, baos.toByteArray()));
-      java.io.DataInputStream dis = new java.io.DataInputStream(new java.io.ByteArrayInputStream(response.data, 1, response.data.length - 1));
+      MyDataInput dis = new MyDataInput(new java.io.ByteArrayInputStream(response.data, 1, response.data.length - 1));
       if (response.data[0] == 0)
         return readObjectFromStream(dis);
       else
@@ -2167,7 +1899,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     try
     {
       java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-      java.io.DataOutputStream dos = new java.io.DataOutputStream(baos);
+      MyDataOutput dos = new MyDataOutput(baos);
       dos.writeUTF(targetUI != null ? targetUI.getLocalUIClientName() : "");
       dos.writeUTF(methodName);
       dos.writeInt(args != null ? args.length : 0);
@@ -2176,7 +1908,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
         writeObjectToStream(args[i], dos);
       }
       Msg response = postMessage(new Msg(REQUEST_MSG, HOOK, baos.toByteArray()));
-      java.io.DataInputStream dis = new java.io.DataInputStream(new java.io.ByteArrayInputStream(response.data));
+      MyDataInput dis = new MyDataInput(new java.io.ByteArrayInputStream(response.data));
       return readObjectFromStream(dis);
     }
     catch (Exception e)
@@ -2195,7 +1927,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     try
     {
       java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-      java.io.DataOutputStream dos = new java.io.DataOutputStream(baos);
+      MyDataOutput dos = new MyDataOutput(baos);
       dos.writeUTF(eventName);
       dos.writeInt(eventArgs != null ? eventArgs.size() : 0);
       if (eventArgs != null)
@@ -2242,7 +1974,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     }
     try {
       java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-      java.io.DataOutputStream dos = new java.io.DataOutputStream(baos);
+      MyDataOutput dos = new MyDataOutput(baos);
       dos.writeInt(set.size());
       for(Entry<String, String> entry : set) {
         dos.writeUTF(entry.getKey());
@@ -2265,7 +1997,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     try
     {
       java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-      java.io.DataOutputStream dos = new java.io.DataOutputStream(baos);
+      MyDataOutput dos = new MyDataOutput(baos);
       dos.writeUTF(requestor.getLocalUIClientName());
       dos.writeInt(convertToRemoteDBID(watchAir.id));
       Msg replyMsg = postMessage(new Msg(REQUEST_MSG, WATCH_LIVE, baos.toByteArray()));
@@ -2292,7 +2024,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     try
     {
       java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-      java.io.DataOutputStream dos = new java.io.DataOutputStream(baos);
+      MyDataOutput dos = new MyDataOutput(baos);
       dos.writeUTF(requestor.getLocalUIClientName());
       dos.writeInt(convertToRemoteDBID(watchAir.id));
       return getIntFromBytes(postMessage(new Msg(REQUEST_MSG, RECORD, baos.toByteArray())).data, 0);
@@ -2313,7 +2045,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     try
     {
       java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-      java.io.DataOutputStream dos = new java.io.DataOutputStream(baos);
+      MyDataOutput dos = new MyDataOutput(baos);
       dos.writeUTF(requestor.getLocalUIClientName());
       dos.writeInt(convertToRemoteDBID(watchAir.id));
       if (postMessage(new Msg(REQUEST_MSG, CANCEL_RECORD, baos.toByteArray())).data[0] == 0)
@@ -2335,7 +2067,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     try
     {
       java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-      java.io.DataOutputStream dos = new java.io.DataOutputStream(baos);
+      MyDataOutput dos = new MyDataOutput(baos);
       dos.writeUTF(requestor.getLocalUIClientName());
       dos.writeInt(convertToRemoteDBID(watchFile.id));
       Msg replyMsg = postMessage(new Msg(REQUEST_MSG, WATCH_FILE, baos.toByteArray()));
@@ -2360,7 +2092,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     try
     {
       java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-      java.io.DataOutputStream dos = new java.io.DataOutputStream(baos);
+      MyDataOutput dos = new MyDataOutput(baos);
       dos.writeUTF(requestor.getLocalUIClientName());
       postMessage(new Msg(REQUEST_MSG, WATCH_FINISH, baos.toByteArray()));
     }
@@ -2377,7 +2109,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     try
     {
       java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-      java.io.DataOutputStream dos = new java.io.DataOutputStream(baos);
+      MyDataOutput dos = new MyDataOutput(baos);
       dos.writeUTF(requestor.getLocalUIClientName());
       dos.writeInt(convertToRemoteDBID(orgMR.getContentAiring().id));
       dos.writeInt(orgMR.recur);
@@ -2402,7 +2134,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     try
     {
       java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-      java.io.DataOutputStream dos = new java.io.DataOutputStream(baos);
+      MyDataOutput dos = new MyDataOutput(baos);
       dos.writeUTF(requestor.getLocalUIClientName());
       dos.writeInt(baseAir == null ? 0 : convertToRemoteDBID(baseAir.id));
       dos.writeInt(recurCode);
@@ -2427,7 +2159,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     try
     {
       java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-      java.io.DataOutputStream dos = new java.io.DataOutputStream(baos);
+      MyDataOutput dos = new MyDataOutput(baos);
       dos.writeUTF(requestor.getLocalUIClientName());
       dos.writeUTF(chanString);
       dos.writeUTF(mmcInputName);
@@ -2470,7 +2202,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     try
     {
       java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-      java.io.DataOutputStream dos = new java.io.DataOutputStream(baos);
+      MyDataOutput dos = new MyDataOutput(baos);
       dos.writeLong(diskSpace);
       dos.writeUTF(destFile.toString());
       Msg response = postMessage(new Msg(REQUEST_MSG, REQUEST_UPLOAD, baos.toByteArray()));
@@ -2492,7 +2224,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     try
     {
       java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-      java.io.DataOutputStream dos = new java.io.DataOutputStream(baos);
+      MyDataOutput dos = new MyDataOutput(baos);
       dos.writeBoolean(grantAccess);
       dos.writeUTF(theFile.toString());
       Msg response = postMessage(new Msg(REQUEST_MSG, REQUEST_MS_ACCESS, baos.toByteArray()));
@@ -2754,7 +2486,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     try
     {
       Msg response = postMessage(new Msg(REQUEST_MSG, GET_PRETTY_SCHEDULE, null));
-      java.io.DataInputStream dis = new java.io.DataInputStream(new java.io.ByteArrayInputStream(response.data));
+      MyDataInput dis = new MyDataInput(new java.io.ByteArrayInputStream(response.data));
       int numScheds = dis.readInt();
       Object[] rv = new Object[numScheds];
       for (int i = 0; i < numScheds; i++)
@@ -2973,7 +2705,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     try
     {
       java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-      java.io.DataOutputStream dos = new java.io.DataOutputStream(baos);
+      MyDataOutput dos = new MyDataOutput(baos);
       dos.writeUTF(inactiveFilename);
       // Narflex - 05/29/2012 - I changed this to be a broadcast message instead of a request message. I know there
       // was some reasoning I had as to why all clients should confirm receipt of this message before proceeding...but in the case
@@ -2992,7 +2724,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     try
     {
       byte[] data = new byte[1];
-      data[0] = (byte) (Scheduler.getInstance().areThereDontKnows() ? 1 : 0);
+      data[0] = (byte) (SchedulerSelector.getInstance().areThereDontKnows() ? 1 : 0);
       postMessage(new Msg(BROADCAST_MSG, SCHEDULE_CHANGED, data));
     }
     catch (Exception e)
@@ -3059,7 +2791,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     try
     {
       java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-      java.io.DataOutputStream dos = new java.io.DataOutputStream(baos);
+      MyDataOutput dos = new MyDataOutput(baos);
       dos.writeUTF(requestor.getLocalUIClientName());
       Msg myMsg = new Msg(REQUEST_MSG, GET_CURR_RECORD_FILE_FOR_CLIENT, baos.toByteArray());
       Msg response = postMessage(myMsg);
@@ -3640,7 +3372,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
 
   public String getClientID()
   {
-    return Sage.EMBEDDED ? clientKey : null;
+    return null;
   }
 
   public int getPendingXctCount()
@@ -3802,6 +3534,7 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     }
   }
 
+  //custom OutputStream to allow for greater than 64k writes with writeUTF
   public static class MyDataOutput extends java.io.OutputStream implements java.io.DataOutput
   {
     private java.io.OutputStream innerStream;
@@ -3878,65 +3611,262 @@ public class SageTVConnection implements Runnable, Wizard.XctSyncClient, Carny.P
     {
       // Just in case a null gets in here; it's much better to write it out as an empty string than to simply crash with an exception
       if (s == null) s = "";
-      if (Sage.EMBEDDED)
+      int strlen = s.length();
+      int utflen = 0;
+      int c = 0;
+
+      for (int i = 0; i < strlen; i++) {
+        c = s.charAt(i);
+        if ((c >= 0x0001) && (c <= 0x007F)) {
+          utflen++;
+        } else if (c > 0x07FF) {
+          utflen += 3;
+        } else {
+          utflen += 2;
+        }
+      }
+
+      if (utflen >= 0xFFFF)
       {
-        // With some embedded VMs, it's actually faster to do it this way if they also store
-        // a native UTF-8 byte representation in memory.
-        byte[] tempB = s.getBytes(Sage.I18N_CHARSET);
-        int len = tempB.length;
-        if (len > 0xFFFF)
-        {
-          writeShort(0xFFFF);
-          writeInt(len);
-        }
-        else
-        {
-          writeShort(len);
-        }
-        write(tempB);
+        innerStream.write((byte)0xFF);
+        innerStream.write((byte)0xFF);
+        writeInt(utflen);
       }
       else
       {
-        int strlen = s.length();
-        int utflen = 0;
-        int c = 0;
-
-        for (int i = 0; i < strlen; i++) {
-          c = s.charAt(i);
-          if ((c >= 0x0001) && (c <= 0x007F)) {
-            utflen++;
-          } else if (c > 0x07FF) {
-            utflen += 3;
-          } else {
-            utflen += 2;
-          }
-        }
-
-        if (utflen >= 0xFFFF)
-        {
-          innerStream.write((byte)0xFF);
-          innerStream.write((byte)0xFF);
-          writeInt(utflen);
-        }
-        else
-        {
-          innerStream.write((byte) ((utflen >>> 8) & 0xFF));
-          innerStream.write((byte) ((utflen >>> 0) & 0xFF));
-        }
-        for (int i = 0; i < strlen; i++) {
-          c = s.charAt(i);//charr[i];
-          if ((c >= 0x0001) && (c <= 0x007F)) {
-            innerStream.write((byte) c);
-          } else if (c > 0x07FF) {
-            innerStream.write((byte) (0xE0 | ((c >> 12) & 0x0F)));
-            innerStream.write((byte) (0x80 | ((c >>  6) & 0x3F)));
-            innerStream.write((byte) (0x80 | ((c >>  0) & 0x3F)));
-          } else {
-            innerStream.write((byte) (0xC0 | ((c >>  6) & 0x1F)));
-            innerStream.write((byte) (0x80 | ((c >>  0) & 0x3F)));
-          }
+        innerStream.write((byte) ((utflen >>> 8) & 0xFF));
+        innerStream.write((byte) ((utflen >>> 0) & 0xFF));
+      }
+      for (int i = 0; i < strlen; i++) {
+        c = s.charAt(i);//charr[i];
+        if ((c >= 0x0001) && (c <= 0x007F)) {
+          innerStream.write((byte) c);
+        } else if (c > 0x07FF) {
+          innerStream.write((byte) (0xE0 | ((c >> 12) & 0x0F)));
+          innerStream.write((byte) (0x80 | ((c >>  6) & 0x3F)));
+          innerStream.write((byte) (0x80 | ((c >>  0) & 0x3F)));
+        } else {
+          innerStream.write((byte) (0xC0 | ((c >>  6) & 0x1F)));
+          innerStream.write((byte) (0x80 | ((c >>  0) & 0x3F)));
         }
       }
     }
   }
+  //custom InputStream to allow for greater than 64k reads with readUTF
+  public static class MyDataInput extends java.io.InputStream implements java.io.DataInput
+  {
+    private java.io.InputStream innerStream;
+    public MyDataInput(java.io.InputStream innerStream) {
+      this.innerStream = innerStream;
+    }
+    public final int read() throws java.io.IOException
+    { return innerStream.read(); }
+
+    public final int read(byte b[]) throws java.io.IOException
+    { return innerStream.read(b, 0, b.length); }
+
+    public final int read(byte b[], int off, int len) throws java.io.IOException
+    { return innerStream.read(b, off, len); }
+
+    public final void readFully(byte b[]) throws java.io.IOException
+    { readFully(b, 0, b.length); }
+
+    public final void readFully(byte b[], int off, int len) throws java.io.IOException
+    {
+      if (len < 0)
+        throw new IndexOutOfBoundsException();
+      int n = 0;
+      while (n < len) {
+        int count = innerStream.read(b, off + n, len - n);
+        if (count < 0)
+          throw new java.io.EOFException();
+        n += count;
+      }
+    }
+
+    public final int skipBytes(int n) throws java.io.IOException {
+      int total = 0;
+      int cur = 0;
+
+      while ((total<n) && ((cur = (int) innerStream.skip(n-total)) > 0)) {
+        total += cur;
+      }
+
+      return total;
+    }
+
+    public final boolean readBoolean() throws java.io.IOException {
+      int ch = innerStream.read();
+      if (ch < 0)
+        throw new java.io.EOFException();
+      return (ch != 0);
+    }
+
+    public final byte readByte() throws java.io.IOException {
+      int ch = innerStream.read();
+      if (ch < 0)
+        throw new java.io.EOFException();
+      return (byte)(ch);
+    }
+
+    public final int readUnsignedByte() throws java.io.IOException {
+      int ch = innerStream.read();
+      if (ch < 0)
+        throw new java.io.EOFException();
+      return ch;
+    }
+
+    public final short readShort() throws java.io.IOException {
+      int ch1 = innerStream.read();
+      int ch2 = innerStream.read();
+      if ((ch1 | ch2) < 0)
+        throw new java.io.EOFException();
+      return (short)((ch1 << 8) + (ch2 << 0));
+    }
+
+    public final int readUnsignedShort() throws java.io.IOException {
+      int ch1 = innerStream.read();
+      int ch2 = innerStream.read();
+      if ((ch1 | ch2) < 0)
+        throw new java.io.EOFException();
+      return (ch1 << 8) + (ch2 << 0);
+    }
+
+    public final char readChar() throws java.io.IOException {
+      int ch1 = innerStream.read();
+      int ch2 = innerStream.read();
+      if ((ch1 | ch2) < 0)
+        throw new java.io.EOFException();
+      return (char)((ch1 << 8) + (ch2 << 0));
+    }
+
+    byte[] myReadBuff = new byte[8];
+    public final int readInt() throws java.io.IOException {
+      readFully(myReadBuff, 0, 4);
+      int ch1 = myReadBuff[0] & 0xFF;
+      int ch2 = myReadBuff[1] & 0xFF;
+      int ch3 = myReadBuff[2] & 0xFF;
+      int ch4 = myReadBuff[3] & 0xFF;
+      if ((ch1 | ch2 | ch3 | ch4) < 0)
+        throw new java.io.EOFException();
+      return ((ch1 << 24) + (ch2 << 16) + (ch3 << 8) + (ch4 << 0));
+    }
+
+    public final long readLong() throws java.io.IOException {
+      readFully(myReadBuff, 0, 8);
+      int ch1 = myReadBuff[0] & 0xFF;
+      int ch2 = myReadBuff[1] & 0xFF;
+      int ch3 = myReadBuff[2] & 0xFF;
+      int ch4 = myReadBuff[3] & 0xFF;
+      if ((ch1 | ch2 | ch3 | ch4) < 0)
+        throw new java.io.EOFException();
+      int i0 = ((ch1 << 24) + (ch2 << 16) + (ch3 << 8) + (ch4 << 0));
+      ch1 = myReadBuff[4] & 0xFF;
+      ch2 = myReadBuff[5] & 0xFF;
+      ch3 = myReadBuff[6] & 0xFF;
+      ch4 = myReadBuff[7] & 0xFF;
+      if ((ch1 | ch2 | ch3 | ch4) < 0)
+        throw new java.io.EOFException();
+      int i1 = ((ch1 << 24) + (ch2 << 16) + (ch3 << 8) + (ch4 << 0));
+      return ((long)i0 << 32) + (i1 & 0xFFFFFFFFL);
+    }
+
+    public final float readFloat() throws java.io.IOException {
+      return Float.intBitsToFloat(readInt());
+    }
+    public final double readDouble() throws java.io.IOException {
+      return Double.longBitsToDouble(readLong());
+    }
+
+    public final String readLine() throws java.io.IOException {
+      throw new UnsupportedOperationException();
+    }
+
+    public final String readUTF() throws java.io.IOException {
+      // Since we're doing writeUTF from DataOutputStream in the writer we have to
+      // be compliant on the reader and use the same charset
+      //				return java.io.DataInputStream.readUTF(this);
+      //				int utflen = readUnsignedShort();
+      //				byte bytearr [] = new byte[utflen];
+      //				readFully(bytearr, 0, utflen);
+      //				return new String(bytearr, Sage.CHARSET);
+      // NOTE: We had to update this to use the same code as in FastRandomFile so that we can deal with UTF
+      // strings larger than 64k. That only occurs in the Wiz.bin file and updating the code in here as
+      // well as FastRandomFile will cover all usages of Wiz.bin data then.
+      int utflen = readUnsignedShort();
+      if (utflen == 0)
+        return "";
+      else if (utflen == 0xFFFF)
+        utflen = readInt();
+      if (bytearr == null || bytearr.length < utflen)
+      {
+        bytearr = new byte[utflen*2];
+        chararr = new char[utflen*2];
+      }
+
+      int c, c2, c3;
+      int incount = 0;
+      int outcount = 0;
+
+      readFully(bytearr, 0, utflen);
+
+      while (incount < utflen) {
+        // Fast path for all 7 bit ASCII chars
+        c = bytearr[incount] & 0xFF;
+        if (c > 127) break;
+        incount++;
+        chararr[outcount++]=(char)c;
+      }
+
+      int x;
+      while (incount < utflen) {
+        c = bytearr[incount] & 0xFF;
+        if (c < 128) {
+          incount++;
+          chararr[outcount++]=(char)c;
+          continue;
+        }
+        // Look at the top four bits only, since only they can affect this
+        x = c >> 4;
+        if (x == 12 || x == 13) {
+          // 110xxxxx 10xxxxxx - 2 bytes for this char
+          incount += 2;
+          if (incount > utflen)
+            throw new java.io.UTFDataFormatException("bad UTF data: missing second byte of 2 byte char at " + incount);
+          c2 = bytearr[incount - 1];
+          // Verify next byte starts with 10xxxxxx
+          if ((c2 & 0xC0) != 0x80)
+            throw new java.io.UTFDataFormatException("bad UTF data: second byte format after 110xxxx is wrong char: 0x" +
+              Integer.toString((int)c2, 16) + " count: " + incount);
+          chararr[outcount++]=(char)(((c & 0x1F) << 6) | (c2 & 0x3F));
+        }
+        else if (x == 14)
+        {
+          // 1110xxxx 10xxxxxx 10xxxx - 3 bytes for this char
+          incount += 3;
+          if (incount > utflen)
+            throw new java.io.UTFDataFormatException("bad UTF data: missing extra bytes of 3 byte char at " + incount);
+          c2 = bytearr[incount - 2];
+          c3 = bytearr[incount - 1];
+          // Verify next bytes start with 10xxxxxx
+          if (((c2 & 0xC0) != 0x80) || ((c3 & 0xC0) != 0x80))
+            throw new java.io.UTFDataFormatException("bad UTF data: extra byte format after 1110xxx is wrong char2: 0x" +
+              Integer.toString((int)c2, 16) + " char3: " + Integer.toString((int)c3, 16) + " count: " + incount);
+          chararr[outcount++]=(char)(((c & 0x0F) << 12) | ((c2 & 0x3F) << 6) | (c3 & 0x3F));
+        }
+        else
+        {
+          // No need to support beyond this, as we only have 16 bit chars in Java
+          throw new java.io.UTFDataFormatException("bad UTF data: we don't support more than 16 bit chars char: " +
+            Integer.toString((int)c, 16) + " count:" + incount);
+        }
+      }
+      return new String(chararr, 0, outcount);
+    }
+    // For optimizing UTF reads
+    private byte[] bytearr = null;
+    private char[] chararr = null;
+
+  }
+
 }

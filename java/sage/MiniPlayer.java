@@ -32,7 +32,7 @@ public class MiniPlayer implements DVDMediaPlayer
 
   private java.nio.channels.SocketChannel clientSocket;
   private FastPusherReply clientInStream;
-  private java.nio.ByteBuffer sockBuf = java.nio.ByteBuffer.allocateDirect(Sage.EMBEDDED ? 8192 : 65536);
+  private java.nio.ByteBuffer sockBuf = java.nio.ByteBuffer.allocateDirect(65536);
 
   public static final int MEDIACMD_INIT = 0;
   public static final int MEDIACMD_DEINIT = 1;
@@ -132,7 +132,7 @@ public class MiniPlayer implements DVDMediaPlayer
         mpegSrc.setActiveFile(timeshifted);
         MediaFile currMF = VideoFrame.getMediaFileForPlayer(MiniPlayer.this);
         sage.media.format.ContainerFormat currFileFormat = currMF.getFileFormat();
-        if (!Sage.EMBEDDED && currFileFormat != null && "true".equals(currFileFormat.getMetadataProperty("VARIED_FORMAT")))
+        if (currFileFormat != null && "true".equals(currFileFormat.getMetadataProperty("VARIED_FORMAT")))
           currFileFormat = sage.media.format.FormatParser.getFileFormat(file);
         mpegSrc.setStreamTranscodeMode(null, currFileFormat);
         if (currFileFormat != null && Sage.getBoolean("miniplayer/align_iframes_on_seek", true))
@@ -149,13 +149,14 @@ public class MiniPlayer implements DVDMediaPlayer
           if (Sage.DBG) System.out.println("MiniPlayer is using the RemotePusher");
           MediaFile currMF = VideoFrame.getMediaFileForPlayer(MiniPlayer.this);
           sage.media.format.ContainerFormat currFileFormat = currMF.getFileFormat();
-          if (!Sage.EMBEDDED && currFileFormat != null && "true".equals(currFileFormat.getMetadataProperty("VARIED_FORMAT")))
+          if (currFileFormat != null && "true".equals(currFileFormat.getMetadataProperty("VARIED_FORMAT")))
             currFileFormat = sage.media.format.FormatParser.getFileFormat(file);
           rpSrc.openFile(file.getAbsolutePath(), (currFileFormat == null) ? "" : currFileFormat.getFullPropertyString(false), timeshifted, true);
         }
         else
         {
           mpegSrc.init(true, !timeshifted, usingRemuxer);
+          checkForByteBasedSeeking(file);
         }
       }
       catch (java.io.IOException e)
@@ -397,7 +398,7 @@ public class MiniPlayer implements DVDMediaPlayer
     }
     else
     {
-      duration = (mySrc == null || timeshifted) ? 0 : mySrc.getDurationMillis();
+      duration = (mySrc == null || timeshifted || byteBasedSeeking) ? 0 : mySrc.getDurationMillis();
     }
     if (Sage.DBG) System.out.println("getDuration : "+ duration);
     return duration;
@@ -458,7 +459,7 @@ public class MiniPlayer implements DVDMediaPlayer
     }
     else
     {
-      long otherTime;
+      long otherTime = 0;
       if(transcoded)
       {
         otherTime = (tcSrc != null ? tcSrc.getFirstTimestampMillis() : 0);
@@ -475,7 +476,7 @@ public class MiniPlayer implements DVDMediaPlayer
           otherTime = otherTime - FastMpeg2Reader.MAX_PTS/90;
         }
       }
-      else
+      else if (!byteBasedSeeking)
       {
         otherTime = (mpegSrc != null ? mpegSrc.getFirstTimestampMillis() : 0);
         if (otherTime - nativeTime > 100000 && mpegSrc != null && mpegSrc.didPTSRollover())
@@ -506,7 +507,7 @@ public class MiniPlayer implements DVDMediaPlayer
       return rv;
     }
   }
-
+  
   public boolean getMute()
   {
     return currMute;
@@ -588,6 +589,33 @@ public class MiniPlayer implements DVDMediaPlayer
     }
     timeshifted = serverSideTranscoding;
   }
+  
+  void checkForByteBasedSeeking(java.io.File file) {
+    if (Sage.getBoolean("disable_byte_based_seek_check", true)) return;
+    if (mpegSrc != null) {
+      if (uiMgr.getBoolean("force_byte_based_seeking", false)) {
+        System.out.println("Forcing byte based seeking due to property setting");
+        byteBasedSeeking = true;
+      } else if (!timeshifted) {
+        // We can't check duration for files that are currently recording because
+        // the parser doesn't check the duration in that case and it's problematic
+        // if we change that.
+        long parserDuration = mpegSrc.getDurationMillis();
+        if (parserDuration < 0) {
+          System.out.println("Using byte based seeking due to invalid duration from parser");
+          byteBasedSeeking = true;
+        } else {
+          long fileDur = VideoFrame.getMediaFileForPlayer(this).getDuration(file);
+          long diff = Math.abs(parserDuration - fileDur);
+          if (fileDur > Sage.MILLIS_PER_MIN && diff > fileDur/4) {
+            byteBasedSeeking = true;
+            System.out.println("Using byte based seeking due to duration mismatch between " +
+                "parser (" + parserDuration + ") and recording (" + fileDur + ")");
+          }
+        }
+      }
+    }
+  }
 
   public void load(byte majorTypeHint, byte minorTypeHint, String encodingHint, java.io.File file, String hostname, boolean timeshifted, long bufferSize) throws PlaybackException
   {
@@ -606,7 +634,7 @@ public class MiniPlayer implements DVDMediaPlayer
     if (capDev != null && mcsr != null)
     {
       // Enable the special mode for when we are using Qian's HDHRPrime support along w/ a Bruno client.
-      hdhrPrimeSpecial = (capDev.getName().startsWith("HDHR") || Sage.EMBEDDED) &&
+      hdhrPrimeSpecial = (capDev.getName().startsWith("HDHR")) &&
           capDev.isNetworkEncoder() &&
           Sage.getBoolean("enable_detection_of_hdhrprime_custom_network_encoder", false) &&
           mcsr.isMediaExtender() && mcsr.supports3DTransforms();
@@ -620,8 +648,7 @@ public class MiniPlayer implements DVDMediaPlayer
       if (file.isFile() && currMF.isBluRay())
       {
         // This is an ISO image instead of a DVD directory; so mount it and then change the file path to be the image
-        java.io.File mountDir = Sage.EMBEDDED ? FSManager.getInstance().requestISOMount(file, new java.io.File("/tmp/dvdmount")) :
-          FSManager.getInstance().requestISOMount(file, uiMgr);
+        java.io.File mountDir = FSManager.getInstance().requestISOMount(file, uiMgr);
         if (mountDir == null)
         {
           if (Sage.DBG) System.out.println("FAILED mounting ISO image for BluRay playback");
@@ -640,11 +667,8 @@ public class MiniPlayer implements DVDMediaPlayer
       // to 1.0f; it instead retains its value
       curVolume = uiMgr.getFloat("miniplayer/last_volume", 1.0f);
 
-      if (!Sage.EMBEDDED)
-      {
-        if (initDriver0((vf == null || vf.getDisplayAspectRatio() > 1.40) ? 1 :0 ) == 0)
-          throw new PlaybackException();
-      }
+      if (initDriver0((vf == null || vf.getDisplayAspectRatio() > 1.40) ? 1 :0 ) == 0)
+        throw new PlaybackException();
 
       // See if we need to transcode the video or not. This is dependent upon two things. One is whether or not
       // the client supports the format that the media is in, the other is whether or not it has the bandwidth
@@ -748,15 +772,12 @@ public class MiniPlayer implements DVDMediaPlayer
           if (clientDoesPull)
           {
             // Check the audio & video formats
-            if (!Sage.EMBEDDED)
-            {
-              String vidForm = currMF.getPrimaryVideoFormat();
-              String audForm = currMF.getPrimaryAudioFormat();
-              if (vidForm.length() > 0 && !mcsr.isSupportedVideoCodec(vidForm))
-                clientDoesPull = false;
-              if (audForm.length() > 0 && !mcsr.isSupportedAudioCodec(audForm))
-                clientDoesPull = false;
-            }
+            String vidForm = currMF.getPrimaryVideoFormat();
+            String audForm = currMF.getPrimaryAudioFormat();
+            if (vidForm.length() > 0 && !mcsr.isSupportedVideoCodec(vidForm))
+              clientDoesPull = false;
+            if (audForm.length() > 0 && !mcsr.isSupportedAudioCodec(audForm))
+              clientDoesPull = false;
           }
           fixedPushFormat = mcsr.getFixedPushMediaFormat();
 
@@ -766,7 +787,7 @@ public class MiniPlayer implements DVDMediaPlayer
 
           uiBandwidthEstimate = mcsr.getEstimatedBandwidth();
           // Disable transcoding on the fly
-          if (!Sage.EMBEDDED && uiBandwidthEstimate < 500000 && (clientCanDoMpeg4 || httpls))
+          if (uiBandwidthEstimate < 500000 && (clientCanDoMpeg4 || httpls))
           {
             // No estimated BW from the UI. Do a push to the MiniClient before it's setup and it'll
             // just dump that buffer, but we'll get to see how much time it took
@@ -874,7 +895,7 @@ public class MiniPlayer implements DVDMediaPlayer
             }
             Thread.currentThread().setPriority(oldPriority);
             if (!mcsr.isLocalConnection() && uiBandwidthEstimate < 10000000 &&
-                uiBandwidthEstimate >= Sage.getInt("miniplayer/min_bandwidth_for_no_transcode", 2000000))
+                uiBandwidthEstimate >= Sage.getInt("miniplayer/min_bandwidth_for_no_transcode", 2000000) && Sage.getBoolean("miniplayer/wan_prevent_push", true))
             {
               if (Sage.DBG) System.out.println("Detected non-LAN connection under 10Mbps but above set limit (" + uiBandwidthEstimate +
                   "), force it to transcode mode");
@@ -895,7 +916,7 @@ public class MiniPlayer implements DVDMediaPlayer
       }
 
       // NOTE: We should really check the media's rate against our bandwidth and not use 2Mbps as the bounds
-      if (!Sage.EMBEDDED && !pureLocal && mcsr != null && (mcsr.isSupportedPushContainerFormat(sage.media.format.MediaFormat.MPEG2_PS) ||
+      if (!pureLocal && mcsr != null && (mcsr.isSupportedPushContainerFormat(sage.media.format.MediaFormat.MPEG2_PS) ||
           mcsr.isSupportedPushContainerFormat(sage.media.format.MediaFormat.MPEG2_TS)) && uiBandwidthEstimate < Sage.getInt("miniplayer/min_bandwidth_for_no_transcode", 2000000) && clientCanDoMpeg4)
       {
         lowBandwidth = true;
@@ -921,7 +942,7 @@ public class MiniPlayer implements DVDMediaPlayer
          */
         if (Sage.DBG) System.out.println("MiniPlayer is using Push mode playback");
         pushMode = true; // shouldPush(majorTypeHint, minorTypeHint);
-        useNioTransfers = Sage.getBoolean("use_nio_transfers", Sage.EMBEDDED);
+        useNioTransfers = Sage.getBoolean("use_nio_transfers", false);
         // Check for transcoding
         // NOTE: Always transcode when we're doing push mode with the placeshifter. Non-transcoded push mode
         // doesn't work all that well and people usually connect that way when they want to experiment with transcoding.
@@ -1000,7 +1021,7 @@ public class MiniPlayer implements DVDMediaPlayer
               if (audFormat.getChannels() == 1 || audFormat.getSamplingRate() < 30000)
                 lowRateAudio = true;
             }
-            if (Sage.EMBEDDED || !Sage.getBoolean("miniplayer/allow_transcoding", true))
+            if (!Sage.getBoolean("miniplayer/allow_transcoding", true))
             {
               // do not allow transcoding w/ FFMPEG
               containerOK = videoOK = audioOK = true;
@@ -1074,7 +1095,7 @@ public class MiniPlayer implements DVDMediaPlayer
             mpegSrc = new FastMpeg2Reader(file, hostname);
             mpegSrc.setActiveFile(timeshifted);
             sage.media.format.ContainerFormat currFileFormat = currMF.getFileFormat();
-            if (!Sage.EMBEDDED && currFileFormat != null && "true".equals(currFileFormat.getMetadataProperty("VARIED_FORMAT")))
+            if (currFileFormat != null && "true".equals(currFileFormat.getMetadataProperty("VARIED_FORMAT")))
               currFileFormat = sage.media.format.FormatParser.getFileFormat(file);
             mpegSrc.setStreamTranscodeMode(prefTranscodeMode, currFileFormat);
             transcoded = false;
@@ -1083,7 +1104,7 @@ public class MiniPlayer implements DVDMediaPlayer
           }
         }
         else if (hdhrPrimeSpecial || (hostname != null && (hostname.equals(Sage.get("alternate_media_server", "")) ||
-            Sage.getBoolean("use_alternate_streaming_ports", false))) || (mcsr == null && Sage.EMBEDDED))
+            Sage.getBoolean("use_alternate_streaming_ports", false))))
         {
           if (hostname == null)
             hostname = "127.0.0.1";
@@ -1093,7 +1114,7 @@ public class MiniPlayer implements DVDMediaPlayer
           {
             rpSrc.connect(hostname);
             sage.media.format.ContainerFormat currFileFormat = currMF.getFileFormat();
-            if (!Sage.EMBEDDED && currFileFormat != null && "true".equals(currFileFormat.getMetadataProperty("VARIED_FORMAT")))
+            if (currFileFormat != null && "true".equals(currFileFormat.getMetadataProperty("VARIED_FORMAT")))
               currFileFormat = sage.media.format.FormatParser.getFileFormat(file);
             rpSrc.openFile(file.getAbsolutePath(), currFileFormat == null ? "" : currFileFormat.getFullPropertyString(false),
                 timeshifted, false);
@@ -1113,7 +1134,7 @@ public class MiniPlayer implements DVDMediaPlayer
           mpegSrc = new FastMpeg2Reader(file, hostname);
           mpegSrc.setActiveFile(timeshifted);
           sage.media.format.ContainerFormat currFileFormat = currMF.getFileFormat();
-          if (!Sage.EMBEDDED && currFileFormat != null && "true".equals(currFileFormat.getMetadataProperty("VARIED_FORMAT")))
+          if (currFileFormat != null && "true".equals(currFileFormat.getMetadataProperty("VARIED_FORMAT")))
             currFileFormat = sage.media.format.FormatParser.getFileFormat(file);
           mpegSrc.setStreamTranscodeMode(null, currFileFormat);
           if (currMF.isBluRay())
@@ -1142,6 +1163,7 @@ public class MiniPlayer implements DVDMediaPlayer
             else
             {
               mpegSrc.init(true, !timeshifted, usingRemuxer);
+              checkForByteBasedSeeking(file);
             }
           }
           catch (java.io.IOException e)
@@ -1164,17 +1186,11 @@ public class MiniPlayer implements DVDMediaPlayer
       //mpegSrc.setTimeshifted(timeshifted);
       //mpegSrc.setCircularSize(bufferSize);
 
-      if (Sage.EMBEDDED && (serverSideTranscoding || mcsr == null || mcsr.doesNeedInitDriver()))
-      {
-        if (initDriver0((vf == null || vf.getDisplayAspectRatio() > 1.40) ? 1 :0 ) == 0)
-          throw new PlaybackException();
-      }
-
       if (rpSrc != null)
       {
         // Tell the miniclient to redirect to our alternate server instead
         sage.media.format.ContainerFormat currFileFormat = currMF.getFileFormat();
-        if (!Sage.EMBEDDED && currFileFormat != null && "true".equals(currFileFormat.getMetadataProperty("VARIED_FORMAT")))
+        if (currFileFormat != null && "true".equals(currFileFormat.getMetadataProperty("VARIED_FORMAT")))
           currFileFormat = sage.media.format.FormatParser.getFileFormat(file);
         if (!openURL0("push://" + hostname + (Sage.getBoolean("use_alternate_streaming_ports", false) ?
             ":31098" : "") + "/session/" + rpSrc.getSessionID() + "?" +
@@ -1188,7 +1204,7 @@ public class MiniPlayer implements DVDMediaPlayer
         if (currMF != null)
         {
           sage.media.format.ContainerFormat cf = (bdp != null) ? bdp.getFileFormat() : currMF.getFileFormat();
-          if (!Sage.EMBEDDED && cf != null && "true".equals(cf.getMetadataProperty("VARIED_FORMAT")))
+          if (cf != null && "true".equals(cf.getMetadataProperty("VARIED_FORMAT")))
             cf = sage.media.format.FormatParser.getFileFormat(file);
           if (usingRemuxer)
             cf = ((RemuxTranscodeEngine)mpegSrc.getTranscoder()).getTargetFormat();
@@ -1226,17 +1242,6 @@ public class MiniPlayer implements DVDMediaPlayer
       else
       {
         // Do this now since we may use it below for determining if we're localhost or not & setting up the stv:// URL hostname
-        if (Sage.EMBEDDED)
-        {
-          if (clientSocket == null)
-            clientSocket = (mcsr == null) ? MiniClientSageRenderer.getPlayerSocketChannel(null, null) :
-              mcsr.getPlayerSocketChannel();
-          if (clientSocket == null)
-          {
-            if (Sage.DBG) System.out.println("ERROR could not get media player socket!");
-            throw new PlaybackException();
-          }
-        }
         String theURL = null;
         if (majorTypeHint == MediaFile.MEDIATYPE_DVD && file == null)
           theURL = "dvd://";
@@ -1270,63 +1275,8 @@ public class MiniPlayer implements DVDMediaPlayer
         else if (hostname != null && hostname.equals(Sage.get("alternate_media_server", "")))
           theURL = "stv://" + hostname + (Sage.getBoolean("use_alternate_streaming_ports", false) ?
               ":7817" : "") + "/" + file.getAbsolutePath();
-        else if (Sage.EMBEDDED && Sage.client && hostname != null)
-        {
-          theURL = "stv://" + Sage.preferredServer + (Sage.getBoolean("use_alternate_streaming_ports", false) ?
-              ":7817" : "") + "/" + file.getAbsolutePath();
-        }
         else if (mcsr.isStreamingProtocolSupported("stv") && (!IOUtils.isLocalhostSocket(clientSocket.socket()) || timeshifted))
           theURL = "stv://" + clientSocket.socket().getLocalAddress().getHostAddress() + "/" + file.getAbsolutePath();
-        else if (Sage.LINUX_OS && Sage.EMBEDDED && file.getAbsolutePath().startsWith("/var/upnp") && false)
-        {
-          if (Sage.DBG) System.out.println("Converting UPnP file path [" + file + "] to an http URL");
-          String fullPath = file.getAbsolutePath();
-          String filename = file.getName();
-          int idx = filename.lastIndexOf('.');
-          java.io.File metaFile = null;
-          if (idx != -1)
-          {
-            metaFile = new java.io.File(file.getParentFile(), ".metadata/" + filename.substring(0, idx + 1) + "xml");
-            if (Sage.DBG) System.out.println("UPnP metadata file path=" + metaFile);
-          }
-          if (metaFile != null && metaFile.isFile())
-          {
-            java.io.BufferedReader bufRead = null;
-            try
-            {
-              bufRead = new java.io.BufferedReader(new java.io.FileReader(metaFile));
-              String line = bufRead.readLine();
-              while (line != null)
-              {
-                if (line.startsWith("<res "))
-                {
-                  int idx1 = line.indexOf(">");
-                  int idx2 = line.lastIndexOf("<");
-                  if (idx1 != -1 && idx2 != -1)
-                  {
-                    theURL = line.substring(idx1 + 1, idx2).trim();
-                    if (Sage.DBG) System.out.println("Got the UPnP URL of:" + theURL);
-                    break;
-                  }
-                }
-                line = bufRead.readLine();
-              }
-            }
-            catch (Exception e)
-            {
-              System.out.println("ERROR reading UPnP metadata file:" + e);
-            }
-            finally
-            {
-              if (bufRead != null)
-              {
-                try{ bufRead.close(); }catch (Exception e){}
-              }
-            }
-          }
-          if (theURL == null)
-            theURL = file.getAbsolutePath();
-        }
         else
           theURL = file.getAbsolutePath();
         if (!openURL0(theURL))
@@ -1336,7 +1286,7 @@ public class MiniPlayer implements DVDMediaPlayer
       if (((mediaExtender && pushMode) || hdMediaExtender) && !lowBandwidth)
       {
         sage.media.format.ContainerFormat cf = (bdp != null) ? bdp.getFileFormat() : currMF.getFileFormat();
-        if (!Sage.EMBEDDED && cf != null && "true".equals(cf.getMetadataProperty("VARIED_FORMAT")))
+        if (cf != null && "true".equals(cf.getMetadataProperty("VARIED_FORMAT")))
           cf = sage.media.format.FormatParser.getFileFormat(file);
         if (usingRemuxer)
           cf = ((RemuxTranscodeEngine)mpegSrc.getTranscoder()).getTargetFormat();
@@ -1792,10 +1742,10 @@ public class MiniPlayer implements DVDMediaPlayer
                 if (rpSrc.isServerEOS())
                 {
                   MediaFile currRecFile = null;
-                  if (uiMgr != null && (currRecFile = Seeker.getInstance().getCurrRecordFileForClient(uiMgr, false)) != null)
+                  if (uiMgr != null && (currRecFile = SeekerSelector.getInstance().getCurrRecordFileForClient(uiMgr, false)) != null)
                   {
                     // Also make sure this device supports fast mux switching
-                    CaptureDevice recInput = Seeker.getInstance().getCaptureDeviceControlledByClient(uiMgr);
+                    CaptureDevice recInput = SeekerSelector.getInstance().getCaptureDeviceControlledByClient(uiMgr);
                     if (!eos && (recInput == null || recInput.supportsFastMuxSwitch()))
                     {
                       if (Sage.DBG) System.out.println("SERVER Buffer size is now ZERO! Trigger local EOS to start the seamless file switch");
@@ -1957,10 +1907,10 @@ public class MiniPlayer implements DVDMediaPlayer
               if (readBufferSize <= 0)
               {
                 MediaFile currRecFile = null;
-                if (uiMgr != null && (currRecFile = Seeker.getInstance().getCurrRecordFileForClient(uiMgr, false)) != null)
+                if (uiMgr != null && (currRecFile = SeekerSelector.getInstance().getCurrRecordFileForClient(uiMgr, false)) != null)
                 {
                   // Also make sure this device supports fast mux switching
-                  CaptureDevice recInput = Seeker.getInstance().getCaptureDeviceControlledByClient(uiMgr);
+                  CaptureDevice recInput = SeekerSelector.getInstance().getCaptureDeviceControlledByClient(uiMgr);
                   if (!eos && (recInput == null || recInput.supportsFastMuxSwitch()))
                   {
                     if (Sage.DBG) System.out.println("SERVER Buffer size is now ZERO! Trigger local EOS to start the seamless file switch");
@@ -2108,7 +2058,7 @@ public class MiniPlayer implements DVDMediaPlayer
                 bufferFillPause = false;
               }
             }
-            if(!Sage.EMBEDDED && ((numPushedBuffers&0x1F)==0)/* && (((int)Math.floor(myRate))!=1 || serverSideTranscoding)*/)
+            if((numPushedBuffers&0x1F)==0/* && (((int)Math.floor(myRate))!=1 || serverSideTranscoding)*/)
             {
               try{
                 decoderLock.notifyAll();
@@ -2289,10 +2239,15 @@ public class MiniPlayer implements DVDMediaPlayer
               }
               else
               {
-                if(transcoded)
+                if (byteBasedSeeking) {
+                  long target = Math.round((((double) seekTimeMillis) / 
+                      VideoFrame.getMediaFileForPlayer(this).getDuration(currFile)) * mpegSrc.length());
+                  mpegSrc.seekToPosition(target);
+                } else if(transcoded) {
                   tcSrc.seek(seekTimeMillis);
-                else
+                } else {
                   mpegSrc.seek(seekTimeMillis);
+                }
 
                 if (currState == PAUSE_STATE && (mcsr != null && mcsr.supportsFrameStep()))
                 {
@@ -3110,9 +3065,17 @@ public class MiniPlayer implements DVDMediaPlayer
           lastMediaTimeCacheTime = Sage.eventTime();
           return lastMediaTime;
         }
+        if (byteBasedSeeking && mpegSrc != null) {
+          // Generate an estimated media time based off the byte position and
+          // the current known duration of the file.
+          long currPos = Math.max(0, mpegSrc.getReadPos() - maxAvailBufferSize);
+          double relativePos = ((double) currPos) / mpegSrc.length();
+          MediaFile mf = VideoFrame.getMediaFileForPlayer(this);
+          currMediaTime = Math.round(mf.getDuration(currFile) * relativePos);
+        }
         // I don't see any good reason to do this interpolation on embedded since if we sent a request to the miniclient above
         // then we should have a pretty accurate time counter right now
-        if (lastMediaTimeBase == currMediaTime && currState == PLAY_STATE && !Sage.EMBEDDED)
+        if (lastMediaTimeBase == currMediaTime && currState == PLAY_STATE)
         {
           lastMediaTime = (Sage.eventTime() - lastMediaTimeCacheTime) + lastMediaTime;
         }
@@ -3452,7 +3415,7 @@ public class MiniPlayer implements DVDMediaPlayer
       }
       long t2 = Sage.eventTime();
       pushedBytes += size;
-      if ((bwDebug || Sage.EMBEDDED) && Sage.DBG && numPushedBuffers % 50 == 0 && t2 > lastTime && size > 0)
+      if (bwDebug && Sage.DBG && numPushedBuffers % 50 == 0 && t2 > lastTime && size > 0)
         System.out.println("BW=" + ((pushedBytes * 8000) / (t2 - lastTime)) + " numPushes=" + numPushes + " numWaits=" + numWaits);
       numPushes++;
       if (size == 0 || !pushMode || (!useAsyncReplies && freeSpace <= pushBufferSize))
@@ -3601,7 +3564,7 @@ public class MiniPlayer implements DVDMediaPlayer
   private void connectionError()
   {
     // Don't forcibly kill the UI if we had a client/server problem
-    if (mcsr != null && (!Sage.EMBEDDED || !NetworkClient.isCSConnectionRestoring()))
+    if (mcsr != null)
       mcsr.connectionError();
   }
 
@@ -4157,6 +4120,7 @@ public class MiniPlayer implements DVDMediaPlayer
   protected long timeGuessMillis;
   protected long guessTimestamp;
   protected long timestampOffset;
+  protected boolean byteBasedSeeking;
   protected boolean serverSideTranscoding;
 
   protected boolean pushMode;
@@ -4259,7 +4223,7 @@ public class MiniPlayer implements DVDMediaPlayer
 
   private java.nio.ByteBuffer[] dbuf = new java.nio.ByteBuffer[2];
 
-  private boolean useAsyncReplies = !Sage.EMBEDDED;
+  private boolean useAsyncReplies = true;
   private long timeout = Sage.getInt("ui/remote_player_connection_timeout", 30000);
   private boolean bwDebug = Sage.getBoolean("miniplayer/bwstats", false);
 

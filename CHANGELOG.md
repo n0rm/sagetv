@@ -1,8 +1,35 @@
 # Change Log
 
+
+##Next
+* Added ability to use fixed push format when transcoding is required, but not low bandwidth
+* Added 720, 1080 and SOURCE (use video source resolution) options to FFMPEGTranscoder for fixed transcoding
+* Added SOURCE option to FPS that calculates GOP automatically and uses FPS of source videos
+* Added an option for Audio Channels.  Does not allow a value greater than source audio
+* Fix for conversion to MKV. Removed Format substitution of "MATROSKA" -> "MATROSKA,WEBM"
+
+
+## Version 9.2.2 (2020-05-16)
+* Fixed MpegDeMux that crashed some MPEG2 playback (Windows)
+* Change service launcher (Windows) to support local JRE
+* Change watch ignore times from constants to properties
+* Tidy up warnings in VS2015 for data type conversions (Windows)
+* Fix for Hauppauge 885 tuners with Alt TS Capture Devices (Windows)
+* Change maximum number of BDA tuners from 2 to 4 (HVR-5525 has 3 BDA tuners)
+* Fix DirecTVSerialControl
+* Fix 64-bit service launcher (Windows)
+* Set default 1G heap for 64-bit (Windows)
+* Updates for OPTUS D1 transponder changes to DVB-S2
+* Fix: Schedules Direct EPG grabber failed to finish updating some satellite-based lineups
+* Added Forced as a property to SubpictureFormat
+* Added the ability to auto select forced subtitle track based on the default audio language
+* Added the ability to use a Plugin for format detection of media files instead of built in ffmpeg.
+* Added 2160p as a Pretty resolution to VideoFormat
+* Added HEVC as a supported media format
+
 ## Version 9.2.1 (2019-03-23)
 * 64-bit AVI playback and music fixes (Windows)
-* Change: Whitelist LAV Audio and Video Decoders (Windows)
+* Change: Allowlist LAV Audio and Video Decoders (Windows)
 * Change: SageTV7 STV system information will indicate 32/64 bit
 * Fix: Include Win10 in 'VISTA_OS' detection (Windows)
 * Change: New installation properties default video/dvd_video renderer is 'EVR'
@@ -13,7 +40,7 @@
 * Fix: IR interface hangs trying to send non-numeric (eg: 42-1-1) command.
 * Removed dependency on SDK6.1 (Windows)
 * Fix: Sage-x64 hang due to CableCARD tuners (Windows)
-* Fix: Add support for HVR-4400 and other 885 variants (Windows) 
+* Fix: Add support for HVR-4400 and other 885 variants (Windows)
 
 ## Version 9.1.10 (2018-10-13)
 * removed old bytes properties for episodeName and desc to resolve potential crashes
@@ -53,7 +80,7 @@
 * Change: Removed unhelpful alias to original person log entries.
 * Fix: Fixed issue with Schedules Direct forcing a full airing re-import on stations that do not have a No Data airing.
 * Change: Lowered the priority of the Schedules Direct person image import threads.
-* Fix: Removed use of G1GC in Windows due to possible memory leak issues. 
+* Fix: Removed use of G1GC in Windows due to possible memory leak issues.
 
 ## Version 9.1.5 (2017-06-19)
 * Fix: Carny throws a null pointer exception if a show has a null title.
@@ -96,7 +123,7 @@
   * public int[] GetSDEPGInProgressSportStatus(String[] ExternalIDs);
 * New: Added editorials based on recommendations from Schedules Direct.
 * Fix: Radio stations in Schedules Direct guide data now retain their prepended zeros in the guide data.
-* Fix: Teams from Schedules Direct were being skipped because they do not have a person ID. 
+* Fix: Teams from Schedules Direct were being skipped because they do not have a person ID.
 
 ## Version 9.0.13 (2017-01-19)
 * Fix: Schedules Direct was unable to distinguish between two lineups with the exact same name.
